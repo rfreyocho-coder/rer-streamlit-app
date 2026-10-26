@@ -526,9 +526,8 @@ def compute(d1: pd.DataFrame, d2: pd.DataFrame, iso1: str, iso2: str,
         t["z"] = (t["RI"] - 100.0) / res.sd
     res.table = t
     if t["RI"].max() / max(t["RI"].min(), 1e-12) > 50:
-        res.warnings.append("The Real Index moves by a factor of more than 50 in this window, which usually means "
-                            "hyperinflation or a currency redenomination. The numbers are mathematically correct "
-                            "but hard to interpret - try a shorter window.")
+        res.warnings.append("Extreme swings (likely hyperinflation or a currency reform). Math is right but hard to "
+                            "read - try a shorter window.")
     return res
 
 
@@ -556,71 +555,77 @@ def signal(res: Result) -> dict | None:
 
 
 def scenarios(sig: dict, c1: str, c2: str) -> tuple[str, str]:
-    """Plain text for the two carry-style scenarios, always naming both currencies."""
+    """One-line verdicts for the two scenarios, always naming both currencies."""
     k = sig["key"]
     if k in ("very_cheap", "cheap"):
-        a = (f"✅ **Historically a better entry point.** The {c1} is cheap in real terms, so it has room to "
-             f"recover toward its average. Buying {c1} assets now means buying low.")
-        b = (f"⚠️ **Not an attractive moment.** You would be buying {c2} assets (and selling {c1}) while the "
-             f"{c1} is historically cheap - if the {c1} recovers, repaying a {c1} loan gets more expensive.")
+        a = f"✅ **Good entry.** The {c1} is cheap in real terms and has room to recover."
+        b = f"⚠️ **Poor timing.** If the cheap {c1} recovers, your {c1} loan gets more expensive to repay."
     elif k in ("expensive", "very_expensive"):
-        a = (f"⚠️ **Not a good moment.** You would be buying {c1} when it is historically pricey and could lose "
-             f"if it returns to its average.")
-        b = (f"✅ **Historically a better entry point.** The {c1} is expensive in real terms, so a {c1} loan is "
-             f"'costly money' that could get cheaper to repay if the {c1} falls back toward its average.")
+        a = f"⚠️ **Poor timing.** You'd buy a pricey {c1} and lose if it falls back to its average."
+        b = f"✅ **Good entry.** The {c1} is pricey; your {c1} loan gets cheaper to repay if it falls back."
     else:
-        a = f"⚖️ **Neutral.** The {c1} trades close to its normal level against the {c2}; the exchange rate gives no edge."
-        b = f"⚖️ **Neutral.** The {c1} trades close to its normal level against the {c2}; the exchange rate gives no edge."
+        a = b = f"⚖️ **Neutral.** The {c1} is near its normal level against the {c2}: no currency edge."
     return a, b
 
 
 # ----------------------------------------------------------------------------
 # PLOT
 # ----------------------------------------------------------------------------
+FONT = "Plus Jakarta Sans, Inter, Arial, sans-serif"
+C_REAL, C_NOM = "#4338ca", "#f59e0b"
+
+
 def make_chart(res: Result, view: str) -> go.Figure:
     t = res.table
     x = t.index.to_timestamp()
     per, c1, c2 = res.per, res.c1, res.c2
-    ri_name = f"Real Index ({c1} in real terms vs {c2}, 100 = period average)"
+    ri_name = f"Real Index ({c1} vs {c2}, 100 = period average)"
     s_name = f"S = {per}"
-    ri_hover = ("%{x|%b %Y}<br>Real Index: %{y:.1f}<br>(above 100 = " + c1 + " expensive in real terms)<extra></extra>")
-    s_hover = "%{x|%b %Y}<br>" + per + ": %{y:,.4f}<extra></extra>"
+    ri_hover = "Real Index: %{y:.1f}  (above 100 = " + c1 + " expensive)<extra></extra>"
+    s_hover = per + ": %{y:,.4f}<extra></extra>"
     both = view == "Both"
     fig = make_subplots(specs=[[{"secondary_y": both}]])
 
     if view in ("Real", "Both"):
-        fig.add_trace(go.Scatter(x=x, y=t["RI"], name=ri_name, mode="lines", line=dict(color="#1f5fbf", width=3),
+        fig.add_trace(go.Scatter(x=x, y=t["RI"], name=ri_name, mode="lines", line=dict(color=C_REAL, width=3),
                                  hovertemplate=ri_hover), secondary_y=False)
     if view in ("Nominal", "Both"):
         fig.add_trace(go.Scatter(x=x, y=t["S"], name=s_name, mode="lines",
-                                 line=dict(color="#e07b00", width=3 if view == "Nominal" else 2),
+                                 line=dict(color=C_NOM, width=3 if view == "Nominal" else 2.2),
                                  hovertemplate=s_hover), secondary_y=True if both else False)
 
     if view in ("Real", "Both"):          # shapes after traces so Plotly knows the subplot
         if math.isfinite(res.sd):
             sd = res.sd
-            fig.add_hrect(y0=100 - 0.5 * sd, y1=100 + 0.5 * sd, fillcolor="rgba(224,168,0,0.13)", line_width=0, layer="below", row=1, col=1)
-            fig.add_hrect(y0=100 + 0.5 * sd, y1=100 + 1.5 * sd, fillcolor="rgba(229,83,61,0.10)", line_width=0, layer="below", row=1, col=1)
-            fig.add_hrect(y0=100 - 1.5 * sd, y1=100 - 0.5 * sd, fillcolor="rgba(76,175,80,0.10)", line_width=0, layer="below", row=1, col=1)
-            for k, txt in ((1.5, "+1.5 SD"), (0.5, "+0.5 SD"), (-0.5, "−0.5 SD"), (-1.5, "−1.5 SD")):
-                fig.add_hline(y=100 + k * sd, line_width=1, line_dash="dot", line_color="rgba(120,120,120,0.55)",
-                              annotation_text=txt, annotation_position="top left", annotation_font_size=11, row=1, col=1)
-        fig.add_hline(y=100, line_dash="dash", line_color="#444", line_width=2,
-                      annotation_text="100 = average", annotation_position="bottom right", row=1, col=1)
+            fig.add_hrect(y0=100 - 0.5 * sd, y1=100 + 0.5 * sd, fillcolor="rgba(234,179,8,0.14)", line_width=0, layer="below", row=1, col=1)
+            fig.add_hrect(y0=100 + 0.5 * sd, y1=100 + 1.5 * sd, fillcolor="rgba(239,68,68,0.10)", line_width=0, layer="below", row=1, col=1)
+            fig.add_hrect(y0=100 - 1.5 * sd, y1=100 - 0.5 * sd, fillcolor="rgba(34,197,94,0.10)", line_width=0, layer="below", row=1, col=1)
+            for k, txt in ((1.5, "+1.5 SD · very expensive"), (0.5, "+0.5 SD"), (-0.5, "−0.5 SD"), (-1.5, "−1.5 SD · very cheap")):
+                fig.add_hline(y=100 + k * sd, line_width=1, line_dash="dot", line_color="rgba(100,116,139,0.6)",
+                              annotation_text=txt, annotation_position="top left",
+                              annotation_font=dict(size=11, color="#64748b"), row=1, col=1)
+        fig.add_hline(y=100, line_dash="dash", line_color="#334155", line_width=2,
+                      annotation_text="100 = average", annotation_position="bottom right",
+                      annotation_font=dict(size=12, color="#334155"), row=1, col=1)
     if view == "Real":
-        title, ytitle = f"Real Index: is the {c1} cheap or expensive vs the {c2}?", "Real Index (100 = average of this period)"
+        title, ytitle = f"Is the {c1} cheap or expensive vs the {c2}?", "Real Index (100 = period average)"
     elif view == "Nominal":
-        title, ytitle = f"Nominal exchange rate: {per}", f"S = {per}"
+        title, ytitle = f"Market rate: {per}", f"S = {per}"
     else:
-        title, ytitle = f"Real Index and nominal rate: {c1} vs {c2}", "Real Index (100 = average of this period)"
-    fig.update_layout(title=dict(text=title, font=dict(size=22)), height=520, hovermode="x unified",
-                      legend=dict(orientation="h", y=-0.18, font=dict(size=14)),
-                      margin=dict(l=10, r=10, t=70, b=10), font=dict(size=14))
-    fig.update_yaxes(title_text=ytitle, secondary_y=False, title_font=dict(size=15))
+        title, ytitle = f"Real Index vs market rate ({per})", "Real Index (100 = period average)"
+    fig.update_layout(template="plotly_white", title=dict(text=title, font=dict(size=21, family=FONT)),
+                      height=540, hovermode="x unified", font=dict(size=14, family=FONT),
+                      legend=dict(orientation="h", y=-0.16, font=dict(size=13)),
+                      margin=dict(l=10, r=10, t=70, b=10),
+                      hoverlabel=dict(font=dict(family=FONT, size=14)))
+    fig.update_yaxes(title_text=ytitle, secondary_y=False, title_font=dict(size=14), gridcolor="#eef2f7")
     if both:
         fig.update_yaxes(title_text=f"S = {per} (currency units)", secondary_y=True, showgrid=False,
-                         title_font=dict(size=15))
-    fig.update_xaxes(title_text="Month")
+                         title_font=dict(size=14, color=C_NOM), tickfont=dict(color=C_NOM))
+    fig.update_xaxes(title_text=None, showgrid=False, hoverformat="%b %Y",
+                     rangeselector=dict(buttons=[dict(count=5, label="5Y", step="year", stepmode="backward"),
+                                                 dict(count=10, label="10Y", step="year", stepmode="backward"),
+                                                 dict(step="all", label="All")]))
     return fig
 
 
@@ -656,33 +661,21 @@ def explain(res: Result, view: str, lab1: str, lab2: str) -> str:
     t, c1, c2 = res.table, res.c1, res.c2
     last, ri_last = t.index[-1], float(t["RI"].iloc[-1])
     hi_m, lo_m = t["RI"].idxmax(), t["RI"].idxmin()
-    s_last = float(t["S"].iloc[-1])
-    dropped_txt = "no months were dropped."
+    dropped = ""
     if res.n_dropped:
-        why = "; ".join(f"{n} month(s) had no {txt}" for txt, n in res.drop_reasons.items())
-        dropped_txt = f"{res.n_dropped} month(s) were dropped because a needed number was missing ({why})."
-    direction = ("above 100 → real appreciation (more expensive)" if ri_last > 100
-                 else "below 100 → real depreciation (cheaper)")
+        why = ", ".join(f"no {txt}" for txt in res.drop_reasons)
+        dropped = f" · {res.n_dropped} skipped ({why})"
+    where = "above 100 → pricier than usual" if ri_last > 100 else "below 100 → cheaper than usual"
     how = {
-        "Real": f"The blue line is the Real Index. The dashed line at 100 is the period average; when the line is above it, "
-                f"the {c1} is more expensive in real terms. Shaded bands show normal swings (±0.5 and ±1.5 standard deviations).",
-        "Nominal": f"The orange line is the plain market price: how many {c2} you get for 1 {c1}. It is NOT adjusted for "
-                   f"inflation, so it can drift for years without telling you whether the {c1} is cheap or expensive.",
-        "Both": f"The blue line (left axis) is the Real Index; the orange line (right axis) is the plain price in {c2} per {c1}. "
-                f"Where the two disagree, inflation differences are doing the work.",
+        "Real": f"Blue line above the dashed 100 = {c1} expensive; below = cheap. Shaded bands = normal swings.",
+        "Nominal": f"Orange line = market price of 1 {c1} in {c2}. Not inflation-adjusted, so it can't tell cheap from expensive.",
+        "Both": f"Blue (left) = Real Index; orange (right) = {res.per}. Gaps between them come from inflation.",
     }[view]
     return f"""
-**a. What you selected.** Country 1 = {lab1}, Country 2 = {lab2}. Period used: **{mlabel(t.index[0])} to {mlabel(t.index[-1])}**
-({res.n_window} calendar months in your window). **{res.n_valid} valid months** used; {dropped_txt}
-
-**b. What S means.** S is how many **{c2}** you need to buy **1 {c1}**. Latest value ({mlabel(last)}): **1 {c1} = {fmt(s_last)} {c2}**.
-
-**c. What the Real Index means.** It compares prices-adjusted exchange rates with this period's average (= 100). Above 100 = {lab1.split(' (')[0]}
-is more expensive in real terms than its average in this period (real appreciation); below 100 = cheaper.
-Right now ({mlabel(last)}) it is **{ri_last:.1f}** ({direction}). Highest: **{float(t['RI'].max()):.1f}** in {mlabel(hi_m)};
-lowest: **{float(t['RI'].min()):.1f}** in {mlabel(lo_m)}.
-
-**d. How to read this chart.** {how}
+- 📅 **Period:** {mlabel(t.index[0])} – {mlabel(t.index[-1])} · **{res.n_valid} valid months**{dropped}
+- 💱 **S (market rate):** 1 {c1} = **{fmt(float(t['S'].iloc[-1]))} {c2}** in {mlabel(last)}
+- 📊 **Real Index:** **{ri_last:.1f}** now ({where}) · high {float(t['RI'].max()):.1f} ({mlabel(hi_m)}) · low {float(t['RI'].min()):.1f} ({mlabel(lo_m)})
+- 👀 **How to read it:** {how}
 """
 
 
@@ -691,21 +684,46 @@ lowest: **{float(t['RI'].min()):.1f}** in {mlabel(lo_m)}.
 # ----------------------------------------------------------------------------
 CSS = """
 <style>
-html, body, [class*="css"] { font-size: 19px; }
-.stApp h1 { font-size: 2.6rem; }
-.step-title { font-size: 1.9rem; font-weight: 800; margin: 1.6rem 0 .4rem 0; }
-.step-num { background:#1f5fbf; color:white; border-radius:50%; padding:2px 15px; margin-right:12px; }
-.stButton > button, .stDownloadButton > button { font-size: 1.35rem; padding: .85rem 1.6rem; border-radius: 12px; font-weight: 700; }
-div[data-baseweb="select"] > div { font-size: 1.2rem; min-height: 3.2rem; }
-div[role="radiogroup"] label { font-size: 1.35rem !important; padding: .4rem 1rem; }
-.dir-banner { background:#0b3d91; color:white; padding: 1.2rem 1.6rem; border-radius: 16px; margin-bottom: .6rem;
-              font-size: 2.3rem; font-weight: 800; text-align:center; line-height:1.25; }
-.dir-banner small { display:block; font-size:1.05rem; font-weight:500; opacity:.9; margin-top:.3rem; }
-.sig-card { border-radius: 18px; padding: 1.2rem 1.6rem; color: white; margin: .5rem 0 1rem 0; }
-.sig-card .big { font-size: 2.6rem; font-weight: 900; }
-.sig-card .sub { font-size: 1.25rem; }
-.caveats { border-left: 8px solid #e0a800; background:#fff7dd; color:#3a2f00; padding:1rem 1.3rem; border-radius:10px; font-size:1.05rem; }
-.caveats li { margin-bottom:.3rem; }
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+html, body, .stApp, .stMarkdown, button, input, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
+.stMarkdown p, .stMarkdown li { font-size: 1.08rem; line-height: 1.55; }
+.block-container { padding-top: 2rem; max-width: 1180px; }
+.hero { background: linear-gradient(120deg,#1e1b4b 0%,#3730a3 55%,#0e7490 100%); color:#fff; border-radius:22px;
+        padding: 1.6rem 2rem; margin-bottom: 1rem; box-shadow: 0 10px 30px rgba(55,48,163,.25); }
+.hero-t { font-size: 2.4rem; font-weight: 800; letter-spacing:-.02em; }
+.hero-s { font-size: 1.1rem; opacity: .85; margin-top:.2rem; }
+.dir-banner { background:#fff; border:2px solid #e0e7ff; border-radius:18px; padding: 1rem 1.4rem; margin: .2rem 0 .8rem 0;
+              text-align:center; color:#1e1b4b; font-size: 2.2rem; font-weight: 800; line-height:1.2;
+              box-shadow: 0 4px 18px rgba(30,27,75,.08); }
+.dir-banner .pre { color:#6366f1; font-size:1rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; display:block; }
+.dir-banner small { display:block; font-size:1rem; font-weight:500; color:#64748b; margin-top:.3rem; }
+.step-title { font-size: 1.7rem; font-weight: 800; margin: 2rem 0 .5rem 0; color: inherit; letter-spacing:-.01em; }
+.step-num { display:inline-block; background: linear-gradient(135deg,#4338ca,#0e7490); color:white; border-radius:12px;
+            width:2.4rem; height:2.4rem; line-height:2.4rem; text-align:center; margin-right:.7rem; }
+.stButton > button, .stDownloadButton > button { font-size: 1.2rem; padding: .8rem 1.5rem; border-radius: 14px; font-weight: 700;
+            border: none; background: linear-gradient(135deg,#4338ca,#0e7490); color: #fff; box-shadow: 0 4px 14px rgba(67,56,202,.3); }
+.stButton > button:hover, .stDownloadButton > button:hover { filter: brightness(1.1); color:#fff; }
+div[data-baseweb="select"] > div { font-size: 1.15rem; min-height: 3.1rem; border-radius: 12px; }
+div[role="radiogroup"] { gap: .6rem; }
+div[role="radiogroup"] label { font-size: 1.25rem !important; padding: .5rem 1.1rem; border-radius: 12px; border:1.5px solid #c7d2fe; }
+.sig-card { border-radius: 20px; padding: 1.3rem 1.7rem; color: white; margin: .4rem 0 .8rem 0; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.sig-card .lbl { font-size:.95rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; opacity:.85; }
+.sig-card .big { font-size: 2.5rem; font-weight: 800; }
+.sig-card .sub { font-size: 1.1rem; opacity:.95; }
+.meter { display:flex; height:12px; border-radius:8px; overflow:hidden; margin: 1rem 0 .3rem 0; position:relative;
+         box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
+.meter span { flex:1; }
+.meter-wrap { position:relative; }
+.meter-pin { position:absolute; top:-6px; width:6px; height:24px; background:#fff; border-radius:3px; box-shadow:0 0 0 2px #111827; }
+.meter-lbl { display:flex; justify-content:space-between; font-size:.8rem; opacity:.9; }
+.tiles { display:flex; gap:.8rem; margin:.3rem 0 .8rem 0; flex-wrap:wrap; }
+.tile { flex:1; min-width:150px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:.8rem 1rem; color:#0f172a; }
+.tile .k { font-size:.85rem; color:#64748b; font-weight:600; }
+.tile .v { font-size:1.6rem; font-weight:800; }
+.scen { border-radius:16px; padding:1rem 1.2rem; background:#f8fafc; border:1px solid #e2e8f0; color:#0f172a; height:100%; margin-bottom:.9rem; }
+.scen h4 { margin:0 0 .4rem 0; font-size:1.1rem; }
+.caveats { background:#fffbeb; border:1px solid #fde68a; color:#78350f; padding:.8rem 1.1rem; border-radius:14px; font-size:.98rem; }
+.chip { display:inline-block; background:#fef3c7; border-radius:999px; padding:.15rem .7rem; margin:.2rem .25rem; }
 </style>
 """
 
@@ -725,37 +743,53 @@ def swap_countries() -> None:
     st.session_state["swap_note"] = (a, b)
 
 
+def _md(md: str) -> str:
+    """Tiny **bold** -> <b> converter for text placed inside HTML cards."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", md)
+
+
 def render_signal(res: Result, lab1: str, lab2: str, container) -> None:
     with container:
         c1, c2 = res.c1, res.c2
-        st.markdown("### 🧭 Is it a good moment? (valuation signal)")
+        st.markdown("### 🧭 Is it a good moment?")
         sig = signal(res)
         if sig is None:
-            st.info("The signal needs at least **2 valid months with some variation** in your date window to measure the "
-                    "normal swings of this pair. Please widen your dates in Step 2.")
+            st.info("Needs at least **2 valid months** to measure normal swings. Widen your dates in Step 2.")
         else:
             color = ZONE_COLORS[sig["key"]]
-            st.markdown(f'<div class="sig-card" style="background:{color}"><div class="big">{sig["label"]}</div>'
-                        f'<div class="sub">The <b>{c1}</b> in real terms vs the <b>{c2}</b> · z-score {sig["z"]:+.2f} · '
-                        f'{mlabel(sig["month"])}</div></div>', unsafe_allow_html=True)
-            p = sig["percentile"]
-            st.markdown(f"**Today the {c1} is more expensive in real terms than in {p:.0f}% of the months in your period.** "
-                        f"Its Real Index is {sig['latest']:.1f}, which is **{sig['dist']:+.1f}%** away from 100 (its average).")
+            pin = (min(max(sig["z"], -2.5), 2.5) + 2.5) / 5 * 100
+            segs = "".join(f'<span style="background:{ZONE_COLORS[k]}"></span>' for _, _, k in ZONES)
+            st.markdown(
+                f'<div class="sig-card" style="background:linear-gradient(135deg,{color},{color}cc)">'
+                f'<div class="lbl">The {c1} in real terms vs the {c2}</div><div class="big">{sig["label"]}</div>'
+                f'<div class="sub">z-score {sig["z"]:+.2f} · {mlabel(sig["month"])}</div>'
+                f'<div class="meter-wrap"><div class="meter">{segs}</div>'
+                f'<div class="meter-pin" style="left:calc({pin:.1f}% - 3px); top:10px"></div></div>'
+                f'<div class="meter-lbl"><span>Very cheap</span><span>Fair</span><span>Very expensive</span></div></div>',
+                unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="tiles"><div class="tile"><div class="k">Real Index now</div><div class="v">{sig["latest"]:.1f}</div></div>'
+                f'<div class="tile"><div class="k">Distance from average (100)</div><div class="v">{sig["dist"]:+.1f}%</div></div>'
+                f'<div class="tile"><div class="k">Pricier than … of months</div><div class="v">{sig["percentile"]:.0f}%</div></div></div>',
+                unsafe_allow_html=True)
+            st.markdown(f"Today the {c1} is more expensive in real terms than in **{sig['percentile']:.0f}%** of the months in your period.")
             a, b = scenarios(sig, c1, c2)
             col1, col2 = st.columns(2)
-            col1.markdown(f"#### 💼 Invest in {c1} assets using a {c2} loan\n{a}")
-            col2.markdown(f"#### 💼 Invest in {c2} assets using a {c1} loan\n{b}")
+            col1.markdown(f'<div class="scen"><h4>💼 Invest in {c1} assets using a {c2} loan</h4>{_md(a)}</div>',
+                          unsafe_allow_html=True)
+            col2.markdown(f'<div class="scen"><h4>💼 Invest in {c2} assets using a {c1} loan</h4>{_md(b)}</div>',
+                          unsafe_allow_html=True)
         st.markdown(
-            f"**In plain words:** “Expensive in real terms” means that, after correcting for inflation, one {c1} buys fewer goods "
-            f"abroad than it usually does. Real exchange rates tend to drift back toward their long-run average. We compare "
-            f"against this pair's own normal swings (standard deviation) because some pairs are naturally calmer than others.")
+            f"**In plain words:** “expensive in real terms” means 1 {c1} buys fewer goods abroad than usual. "
+            f"Real rates tend to drift back to their long-run average. "
+            f"We judge “unusual” against this pair's own swings, since some pairs are calmer than others.")
         st.markdown(
-            '<div class="caveats"><b>⚠️ Important caveats</b><ul>'
-            "<li>This ignores <b>interest rate differences</b>, which can matter more than the exchange rate.</li>"
-            "<li>Reversion usually takes <b>years, not months</b>.</li>"
-            "<li>The signal <b>changes with the date window</b> you choose.</li>"
-            "<li><b>Pegged currencies</b> (like HKD) may stay “cheap” or “expensive” for decades.</li>"
-            "<li>This is <b>educational, not financial advice</b>.</li></ul></div>", unsafe_allow_html=True)
+            '<div class="caveats"><b>⚠️ Keep in mind</b><br>'
+            '<span class="chip">Ignores interest rates, which can matter more</span>'
+            '<span class="chip">Reversion takes years, not months</span>'
+            '<span class="chip">Changes with your dates</span>'
+            '<span class="chip">Pegs (e.g. HKD) can stay off for decades</span>'
+            '<span class="chip">Educational, not financial advice</span></div>', unsafe_allow_html=True)
 
 
 def build_csv(res: Result) -> bytes:
@@ -781,31 +815,31 @@ def build_csv(res: Result) -> bytes:
 def render_math(res: Result, lab1: str, lab2: str) -> None:
     t, c1, c2 = res.table, res.c1, res.c2
     months = list(t.index[::-1])
-    m = st.selectbox("Pick a month to walk through", months, format_func=mlabel)
+    m = st.selectbox("Pick a month", months, format_func=mlabel)
     r = t.loc[m]
     st.markdown(f"""
-**Month: {mlabel(m)}**
-
-1. **E1** = {fmt(r.E1)} {c1} per 1 USD  ·  **E2** = {fmt(r.E2)} {c2} per 1 USD  (IMF; the USA is always 1)
-2. **S = E2 / E1** = {fmt(r.E2)} / {fmt(r.E1)} = **{fmt(r.S)}** {c2} per {c1}
-3. **P1** (CPI of {cname(res.iso1)}) = {fmt(r.P1)}  ·  **P2** (CPI of {cname(res.iso2)}) = {fmt(r.P2)}
-4. **RER = S × P1 / P2** = {fmt(r.S)} × {fmt(r.P1)} / {fmt(r.P2)} = **{fmt(r.RER)}**
-5. **RER\\*** = average of RER over the {res.n_valid} valid months = **{fmt(res.rer_star)}**
-6. **Real Index = 100 × RER / RER\\*** = 100 × {fmt(r.RER)} / {fmt(res.rer_star)} = **{r.RI:.2f}**
+| Step | Formula | Value |
+|---|---|---|
+| E1, E2 | IMF rates per 1 USD (USA = 1) | {fmt(r.E1)} {c1} · {fmt(r.E2)} {c2} |
+| **S** | E2 / E1 | **{fmt(r.S)} {c2} per {c1}** |
+| P1, P2 | CPI of {cname(res.iso1)}, {cname(res.iso2)} | {fmt(r.P1)} · {fmt(r.P2)} |
+| **RER** | S × P1 / P2 | **{fmt(r.RER)}** |
+| **RER\\*** | average RER, {res.n_valid} valid months | **{fmt(res.rer_star)}** |
+| **Real Index** | 100 × RER / RER\\* | **{r.RI:.2f}** |
 """)
     avg = float(t["RI"].mean())
     ok = abs(avg - 100) < 1e-6
     st.markdown(f"**Live check:** Average of Real Index in your window = **{avg:.2f}** {'✅' if ok else '❌'}")
-    st.caption("CPI levels use each country's own base year; that does not matter because the Real Index divides by its own average.")
+    st.caption("Each CPI has its own base year; it cancels out because the index divides by its own average.")
 
 
 GLOSSARY = {
-    "CPI (Consumer Price Index)": "An index of the prices of a typical shopping basket; its growth is inflation.",
-    "Nominal exchange rate": "The market price of one currency in another, with no inflation adjustment (e.g. 1.34 USD per GBP).",
-    "Real exchange rate": "The nominal rate corrected for price differences between countries, so it shows what a currency really buys.",
-    "Appreciation": "A currency becomes worth more (nominally, or in real terms when its prices rise faster than abroad's).",
-    "Depreciation": "A currency becomes worth less (nominally, or in real terms when it gets cheaper relative to abroad).",
-    "Standard deviation": "A measure of how far a number usually strays from its average; bigger means wilder swings.",
+    "CPI": "Price of a typical shopping basket; its growth is inflation.",
+    "Nominal exchange rate": "Market price of one currency in another (e.g. 1.34 USD per GBP).",
+    "Real exchange rate": "The nominal rate adjusted for prices: what a currency really buys abroad.",
+    "Appreciation": "A currency becomes worth more.",
+    "Depreciation": "A currency becomes worth less.",
+    "Standard deviation": "How far a number usually strays from its average.",
 }
 
 
@@ -815,8 +849,9 @@ GLOSSARY = {
 def main() -> None:
     st.set_page_config(page_title="Real Exchange Rate Explorer", page_icon="💱", layout="wide")
     st.markdown(CSS, unsafe_allow_html=True)
-    st.title("💱 Real Exchange Rate Explorer")
-    st.caption("Live IMF data · Follow the 4 numbered steps · No economics knowledge needed")
+    st.markdown('<div class="hero"><div class="hero-t">💱 Real Exchange Rate Explorer</div>'
+                '<div class="hero-s">Is a currency cheap or expensive once inflation is counted? Live IMF data · 4 steps</div></div>',
+                unsafe_allow_html=True)
 
     banner_slot = st.container()      # filled once we know the numbers
     notice_slot = st.container()
@@ -840,28 +875,26 @@ def main() -> None:
         if st.session_state.get(k) not in options:
             st.session_state[k] = d if d in options else options[0]
     col_a, col_b, col_c = st.columns([4, 3, 4])
-    col_a.selectbox("Country 1 (the currency you are looking at)", options, format_func=fmt_opt, key="c1")
-    col_c.selectbox("Country 2 (what you measure it in)", options, format_func=fmt_opt, key="c2")
+    col_a.selectbox("Country 1 · the currency you check", options, format_func=fmt_opt, key="c1")
+    col_c.selectbox("Country 2 · priced in", options, format_func=fmt_opt, key="c2")
     col_b.markdown("<div style='height:1.9rem'></div>", unsafe_allow_html=True)
     col_b.button("🔄 Swap countries", on_click=swap_countries, width="stretch")
-    st.caption("⭐ **Most traded currencies** are listed first and keep working even when the IMF website is down.")
+    st.caption("⭐ Most traded currencies: listed first, work even if the IMF is offline.")
     if not catalog_live:
-        st.info("The IMF country list could not be loaded, so only the 11 ⭐ most traded currencies are offered.")
+        st.info("IMF list offline: showing the 11 ⭐ currencies only.")
     iso1, iso2 = st.session_state["c1"], st.session_state["c2"]
     lab1, lab2 = label(iso1, imf_names), label(iso2, imf_names)
 
     note = st.session_state.pop("swap_note", None)
     if note:
         a, b = note
-        st.success(f"🔄 Swapped! Country 1 is now {label(b, imf_names)} and Country 2 is now {label(a, imf_names)}. "
-                   f"The exchange rate is now quoted as {ccy(a)} per {ccy(b)} (the inverse), and a high Real Index now "
-                   f"means the {ccy(b)} is expensive instead of the {ccy(a)}.")
+        st.success(f"🔄 Swapped: now {ccy(a)} per {ccy(b)} (the inverse rate). The signal now rates the {ccy(b)}.")
 
     signal_slot = st.container()
 
     if iso1 == iso2:
         friendly_stop("You picked the same country twice",
-                      "Real exchange rates compare two different economies. Please change Country 1 or Country 2 in Step 1.")
+                      "Pick two different countries in Step 1.")
         return
 
     # ---- load data
@@ -875,9 +908,7 @@ def main() -> None:
         if L.df is None:
             others = ", ".join(label(i, imf_names) for i in BACKUP_ISOS if i not in (iso1, iso2))
             friendly_stop(f"We could not get data for {label(L.iso, imf_names)}",
-                          f"{L.problem}\n\nThis can happen when the IMF website is busy or the country does not publish "
-                          f"monthly prices or exchange rates. **What to try next:** pick one of the most traded currencies, "
-                          f"for example {others}.")
+                          f"{L.problem}\n\n**Try instead:** {others}.")
             return
 
     # ---- valid-month range (used to limit the pickers)
@@ -885,10 +916,9 @@ def main() -> None:
     valid = full.index[full[["S", "P1", "P2"]].notna().all(axis=1)]
     if len(valid) == 0:
         friendly_stop("These two countries have no months in common",
-                      f"{lab1} and {lab2} never have prices and exchange rates for the same month in the IMF data. "
-                      "**What to try next:** choose another pair - the ⭐ countries have the longest histories."
-                      + (" (Euro-area members stopped publishing their own exchange rate when they adopted the euro in "
-                         "1999, so they cannot be compared with the Euro area. Compare either one with another currency instead.)"
+                      f"The IMF has no month with prices and rates for both {lab1} and {lab2}. "
+                      "**Try another pair** (⭐ ones have the longest history)."
+                      + (" Euro members' own rates stop in 1998, so they can't be paired with the Euro area."
                          if {iso1, iso2} & (EURO_MEMBERS | {EURO_AREA}) else ""))
         return
     month_opts = [p for p in pd.period_range(valid[0], valid[-1], freq="M")]
@@ -905,7 +935,7 @@ def main() -> None:
     d1, d2 = st.columns(2)
     d1.selectbox("From (first month)", month_strs, format_func=mfmt, key="start_m")
     d2.selectbox("To (last month)", month_strs, format_func=mfmt, key="end_m")
-    st.caption(f"Data available for this pair: {mlabel(month_opts[0])} to {mlabel(month_opts[-1])}.")
+    st.caption(f"Available: {mlabel(month_opts[0])} – {mlabel(month_opts[-1])}")
     start, end = pd.Period(st.session_state["start_m"], "M"), pd.Period(st.session_state["end_m"], "M")
 
     try:
@@ -915,30 +945,28 @@ def main() -> None:
         return
     if res.n_valid == 0:
         friendly_stop("No usable months in this period",
-                      "In the window you chose, at least one of the four needed numbers (two exchange rates, two price "
-                      "indexes) is missing for every month. **What to try next:** widen the period in Step 2.")
+                      "Every month in your window is missing a price or rate. **Widen the period** in Step 2.")
         return
 
     # ---- always-visible direction banner
     s_latest = float(res.table["S"].iloc[-1])
     with banner_slot:
-        st.markdown(f'<div class="dir-banner">You are viewing: 1 {res.c1} = {fmt_banner(s_latest)} {res.c2}'
-                    f'<small>{lab1} priced in {lab2} · latest data {mlabel(res.table.index[-1])} · '
-                    f'quoted as {res.c2} per {res.c1}</small></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="dir-banner"><span class="pre">{res.c2} per {res.c1}</span>'
+                    f'You are viewing: 1 {res.c1} = {fmt_banner(s_latest)} {res.c2}'
+                    f'<small>{lab1} → {lab2} · {mlabel(res.table.index[-1])}</small></div>', unsafe_allow_html=True)
 
     if res.n_dropped:
         why = "; ".join(f"{n} had no {txt}" for txt, n in res.drop_reasons.items())
-        st.info(f"ℹ️ {res.n_dropped} of the {res.n_window} months in your period were left out because a number was missing "
-                f"({why}). {res.n_valid} valid months are used.")
+        st.info(f"ℹ️ {res.n_dropped} of {res.n_window} months skipped ({why}). Using {res.n_valid}.")
     for w in res.warnings:
         st.warning("⚠️ " + w)
     if res.n_valid == 1:
-        st.info("Only one valid month is selected, so 'normal swings' (standard deviation) cannot be measured.")
+        st.info("Only one month selected: normal swings can't be measured.")
 
     render_signal(res, lab1, lab2, signal_slot)
 
     # ---- Step 3
-    step_header(3, "Choose what to see")
+    step_header(3, "Choose the view")
     view_label = st.radio("View", ["📈 Real", "💱 Nominal", "🔀 Both"], horizontal=True, key="view_label",
                           label_visibility="collapsed")
     view = view_label.split(" ")[1]
@@ -948,22 +976,22 @@ def main() -> None:
         friendly_stop("The chart could not be drawn", "Please try another period or country pair.")
 
     with st.container(border=True):
-        st.markdown("### 📝 What this means (in plain language)")
+        st.markdown("### 📝 In plain words")
         st.markdown(explain(res, view, lab1, lab2))
 
     with st.expander("🧮 Show me the math"):
         render_math(res, lab1, lab2)
 
     # ---- Step 4
-    step_header(4, "Download your data")
-    st.download_button("⬇️ Download CSV (every valid month)", build_csv(res),
+    step_header(4, "Download")
+    st.download_button("⬇️ Download CSV", build_csv(res),
                        file_name=f"RER_{res.iso1}_{res.iso2}_{start}_{end}.csv", mime="text/csv")
 
     with st.expander("📖 Glossary"):
         for k, v in GLOSSARY.items():
             st.markdown(f"**{k}** - {v}")
 
-    st.caption("Source: IMF International Financial Statistics (CPI, Exchange Rates) via api.imf.org · Educational use only.")
+    st.caption("Source: IMF (CPI & Exchange Rates) via api.imf.org · Educational use only.")
 
 
 def run() -> None:
