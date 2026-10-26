@@ -1,5 +1,7 @@
 # 💱 Real Exchange Rate Explorer
 
+**▶️ Open the live app: https://rer-app-app-hszbk2cqnd5597x2pulu2z.streamlit.app/**
+
 A Streamlit app that turns live IMF data into a plain-language answer to: *"Is this currency cheap or expensive against another one, after correcting for inflation?"* Built for an MBA assignment; the interface assumes the user knows no economics.
 
 ## What the app does
